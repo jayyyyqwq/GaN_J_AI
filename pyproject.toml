@@ -2,7 +2,7 @@
 name = "agentgrid-env"
 version = "0.1.0"
 description = "3-agent LLM negotiation environment with physical hardware grounding"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "openenv-core",
     "fastmcp",
