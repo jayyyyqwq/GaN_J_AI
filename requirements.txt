@@ -1,9 +1,7 @@
+# Server Space — no gradio/plotly/pandas (websockets conflict with openenv-core)
+openenv-core[core]>=0.2.1
 fastmcp
 fastapi
 uvicorn[standard]
 httpx
 pydantic>=2.0
-gradio>=4.44.0
-huggingface-hub<1.0.0
-plotly>=5.20.0
-pandas>=2.0.0

@@ -1,12 +1,10 @@
 ---
-title: AgentGrid V1
+title: AgentGrid Env Server
 emoji: ⚡
-colorFrom: blue
-colorTo: red
-sdk: gradio
-sdk_version: 4.44.0
-app_file: app.py
-python_version: "3.11"
+colorFrom: yellow
+colorTo: green
+sdk: docker
+app_port: 7860
 pinned: false
 ---
 
