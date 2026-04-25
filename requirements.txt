@@ -3,7 +3,8 @@ fastapi
 uvicorn[standard]
 httpx
 pydantic>=2.0
-gradio>=4.44.1
+gradio==4.44.1
+starlette<0.41
 huggingface-hub<1.0.0
 plotly>=5.20.0
 pandas>=2.0.0

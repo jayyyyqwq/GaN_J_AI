@@ -69,18 +69,24 @@ def _render_all(history: list, display_idx: int):
 
 def cb_reset(mode: str, seed: int, state: dict) -> tuple:
     """Compute full episode for the selected mode and seed, reset display to step 0."""
-    runner = HeadlessRunner(episode_steps=_EPISODE_STEPS)
-
     if mode == "Scripted demo":
         # Try pre-recorded first for instant load; fall back to live compute
         history = load_prerecorded("scripted_demo") if seed == 42 else None
         if history is None:
-            history = scripted_episode(runner, seed=seed)
+            try:
+                runner = HeadlessRunner(episode_steps=_EPISODE_STEPS)
+                history = scripted_episode(runner, seed=seed)
+            except Exception:
+                history = load_prerecorded("scripted_demo") or []
     else:
         prekey = f"baseline_seed_{seed}" if seed in (42, 123, 777) else None
         history = (load_prerecorded(prekey) if prekey else None)
         if history is None:
-            history = random_episode(runner, seed=seed)
+            try:
+                runner = HeadlessRunner(episode_steps=_EPISODE_STEPS)
+                history = random_episode(runner, seed=seed)
+            except Exception:
+                history = load_prerecorded("baseline_seed_42") or []
 
     new_state = {"history": history, "display_idx": 0, "mode": mode}
     step_label = f"Step 1/{len(history)}"
@@ -256,4 +262,4 @@ def build_ui() -> gr.Blocks:
 demo = build_ui()
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(server_name="0.0.0.0", server_port=7860)
