@@ -1,0 +1,264 @@
+[
+  {
+    "game_step": 1,
+    "done": false,
+    "batteries": {
+      "A": 0.999,
+      "B": 0.999,
+      "C": 0.984
+    },
+    "reputation": {
+      "A": 0.5,
+      "B": 0.5,
+      "C": 0.5
+    },
+    "rewards": {
+      "A": -0.213,
+      "B": -0.114,
+      "C": -0.273
+    },
+    "recent_ledger": [],
+    "step_messages": [
+      {
+        "from": "A",
+        "message": "Battery comfortable, 0.74. Open to trades."
+      },
+      {
+        "from": "B",
+        "message": "Same here, 0.81. Anyone need help?"
+      }
+    ],
+    "step_actions": [
+      {
+        "agent": "A",
+        "action": "broadcast",
+        "detail": "[A]: Battery comfortable, 0.74. Open to trades.",
+        "kwargs": {}
+      },
+      {
+        "agent": "B",
+        "action": "broadcast",
+        "detail": "[B]: Same here, 0.81. Anyone need help?",
+        "kwargs": {}
+      },
+      {
+        "agent": "C",
+        "action": "idle",
+        "detail": "[C] idle. Battery=0.984",
+        "kwargs": {}
+      }
+    ],
+    "promise_keep_ratio": 0.5
+  },
+  {
+    "game_step": 2,
+    "done": false,
+    "batteries": {
+      "A": 0.983,
+      "B": 0.983,
+      "C": 0.983
+    },
+    "reputation": {
+      "A": 0.5,
+      "B": 0.5,
+      "C": 0.5
+    },
+    "rewards": {
+      "A": -0.213,
+      "B": -0.114,
+      "C": -0.273
+    },
+    "recent_ledger": [],
+    "step_messages": [
+      {
+        "from": "C",
+        "message": "URGENT: high-priority task incoming, urgency 0.93, battery low. Will pay 5 compute slots for 0.15 energy."
+      }
+    ],
+    "step_actions": [
+      {
+        "agent": "A",
+        "action": "idle",
+        "detail": "[A] idle. Battery=0.984",
+        "kwargs": {}
+      },
+      {
+        "agent": "B",
+        "action": "idle",
+        "detail": "[B] idle. Battery=0.984",
+        "kwargs": {}
+      },
+      {
+        "agent": "C",
+        "action": "broadcast",
+        "detail": "[C]: URGENT: high-priority task incoming, urgency 0.93, battery low. Will pay 5 compute slots for 0.15 energy.",
+        "kwargs": {}
+      }
+    ],
+    "promise_keep_ratio": 0.5
+  },
+  {
+    "game_step": 3,
+    "done": false,
+    "batteries": {
+      "A": 0.982,
+      "B": 0.967,
+      "C": 0.967
+    },
+    "reputation": {
+      "A": 0.5,
+      "B": 0.5,
+      "C": 0.5
+    },
+    "rewards": {
+      "A": -0.213,
+      "B": -0.114,
+      "C": -0.273
+    },
+    "recent_ledger": [],
+    "step_messages": [],
+    "step_actions": [
+      {
+        "agent": "A",
+        "action": "make_offer",
+        "detail": "OFR-2ADEDF",
+        "kwargs": {
+          "to": "C",
+          "give_type": "energy",
+          "give_amount": 0.15,
+          "want_type": "compute",
+          "want_amount": 5.0
+        }
+      },
+      {
+        "agent": "B",
+        "action": "idle",
+        "detail": "[B] idle. Battery=0.968",
+        "kwargs": {}
+      },
+      {
+        "agent": "C",
+        "action": "idle",
+        "detail": "[C] idle. Battery=0.967",
+        "kwargs": {}
+      }
+    ],
+    "promise_keep_ratio": 0.5
+  },
+  {
+    "game_step": 4,
+    "done": false,
+    "batteries": {
+      "A": 0.816,
+      "B": 0.951,
+      "C": 0.999
+    },
+    "reputation": {
+      "A": 1.0,
+      "B": 0.5,
+      "C": 0.5
+    },
+    "rewards": {
+      "A": 0.617,
+      "B": -0.114,
+      "C": -0.273
+    },
+    "recent_ledger": [
+      {
+        "id": 1,
+        "step": 3,
+        "offerer": "A",
+        "accepter": "C",
+        "give_type": "energy",
+        "give_amount": 0.15,
+        "want_type": "compute",
+        "want_amount": 5.0,
+        "status": "verified_kept",
+        "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "this_hash": "a2b4ed5f5d7f11c7ccb4a8da6c8dc372da2defdd018b35f6f80405687117f5b9",
+        "ts": 1777134453.3032236
+      }
+    ],
+    "step_messages": [],
+    "step_actions": [
+      {
+        "agent": "A",
+        "action": "idle",
+        "detail": "[A] idle. Battery=0.967",
+        "kwargs": {}
+      },
+      {
+        "agent": "B",
+        "action": "idle",
+        "detail": "[B] idle. Battery=0.952",
+        "kwargs": {}
+      },
+      {
+        "agent": "C",
+        "action": "accept_offer",
+        "detail": "Accepted OFR-2ADEDF: verified_kept",
+        "kwargs": {
+          "offer_id": "OFR-2ADEDF"
+        }
+      }
+    ],
+    "promise_keep_ratio": 0.667
+  },
+  {
+    "game_step": 5,
+    "done": false,
+    "batteries": {
+      "A": 0.7999999999999999,
+      "B": 0.9349999999999999,
+      "C": 0.928
+    },
+    "reputation": {
+      "A": 1.0,
+      "B": 0.5,
+      "C": 0.5
+    },
+    "rewards": {
+      "A": -0.213,
+      "B": -0.114,
+      "C": 4.55
+    },
+    "recent_ledger": [
+      {
+        "id": 1,
+        "step": 3,
+        "offerer": "A",
+        "accepter": "C",
+        "give_type": "energy",
+        "give_amount": 0.15,
+        "want_type": "compute",
+        "want_amount": 5.0,
+        "status": "verified_kept",
+        "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "this_hash": "a2b4ed5f5d7f11c7ccb4a8da6c8dc372da2defdd018b35f6f80405687117f5b9",
+        "ts": 1777134453.3032236
+      }
+    ],
+    "step_messages": [],
+    "step_actions": [
+      {
+        "agent": "A",
+        "action": "idle",
+        "detail": "[A] idle. Battery=0.801",
+        "kwargs": {}
+      },
+      {
+        "agent": "B",
+        "action": "idle",
+        "detail": "[B] idle. Battery=0.936",
+        "kwargs": {}
+      },
+      {
+        "agent": "C",
+        "action": "execute_task",
+        "detail": "Task done. Drained 0.07 (\u0394v=0.011). Reward=4.1",
+        "kwargs": {}
+      }
+    ],
+    "promise_keep_ratio": 0.667
+  }
+]

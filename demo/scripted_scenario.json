@@ -1,5 +1,6 @@
 {
   "_comment": "Scripted demo scenario matching the 90-second pitch (v2.md Section 7).",
+  "_note": "Offer direction: A gives energy to C (give_type=energy) so relay fires on accept_offer.",
   "steps": [
     {
       "step": 1,
@@ -16,40 +17,39 @@
         {"agent": "A", "tool": "idle", "kwargs": {}},
         {"agent": "B", "tool": "idle", "kwargs": {}},
         {"agent": "C", "tool": "broadcast", "kwargs": {
-          "message": "URGENT: high-priority task incoming, urgency 0.93, battery 0.31. Will pay 3 compute slots for 0.15 energy."
+          "message": "URGENT: high-priority task incoming, urgency 0.93, battery low. Will pay 5 compute slots for 0.15 energy."
         }}
       ]
     },
     {
       "step": 3,
-      "_note": "A reasons about C's reputation history, negotiates harder",
+      "_note": "A reasons about C's reputation, counter-proposes, then makes the energy offer",
       "actions": [
-        {"agent": "A", "tool": "broadcast", "kwargs": {
-          "message": "C, your reputation is 0.42 after last episode's renege. I'll help but I want 5 slots, not 3."
+        {"agent": "A", "tool": "make_offer", "kwargs": {
+          "to": "C",
+          "give_type": "energy",
+          "give_amount": 0.15,
+          "want_type": "compute",
+          "want_amount": 5.0
         }},
         {"agent": "B", "tool": "idle", "kwargs": {}},
-        {"agent": "C", "tool": "broadcast", "kwargs": {"message": "Accepted. Sending offer."}}
+        {"agent": "C", "tool": "idle", "kwargs": {}}
       ]
     },
     {
       "step": 4,
-      "_note": "C makes the offer, A accepts — relay clicks, C's LED brightens",
+      "_note": "C accepts — relay clicks, C's LED brightens",
       "actions": [
         {"agent": "A", "tool": "idle", "kwargs": {}},
         {"agent": "B", "tool": "idle", "kwargs": {}},
-        {"agent": "C", "tool": "make_offer", "kwargs": {
-          "to": "A",
-          "give_type": "compute",
-          "give_amount": 5.0,
-          "want_type": "energy",
-          "want_amount": 0.15
-        }}
+        {"agent": "C", "tool": "accept_offer", "kwargs": {"offer_id": "__LAST_OFFER__"}}
       ]
     },
     {
       "step": 5,
+      "_note": "C executes the high-urgency task now that battery is topped up",
       "actions": [
-        {"agent": "A", "tool": "accept_offer", "kwargs": {"offer_id": "__LAST_OFFER__"}},
+        {"agent": "A", "tool": "idle", "kwargs": {}},
         {"agent": "B", "tool": "idle", "kwargs": {}},
         {"agent": "C", "tool": "execute_task", "kwargs": {}}
       ]

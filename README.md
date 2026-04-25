@@ -1,3 +1,15 @@
+---
+title: AgentGrid V1
+emoji: ⚡
+colorFrom: blue
+colorTo: red
+sdk: gradio
+sdk_version: 4.36.0
+app_file: app.py
+python_version: "3.11"
+pinned: false
+---
+
 # AgentGrid
 
 > *The only OpenEnv submission where the reward function reads from a voltmeter — three small LLMs negotiate energy and compute in plain English, and a relay clicks every time a promise is kept.*

@@ -1,0 +1,9 @@
+openenv-core
+fastmcp
+fastapi
+uvicorn[standard]
+httpx
+pydantic>=2.0
+gradio>=4.36.0
+plotly>=5.20.0
+pandas>=2.0.0

@@ -31,12 +31,15 @@ CREATE TABLE IF NOT EXISTS entries (
 )
 """
 
-# Calibrated from Uno ADC logs: how many volts drop per energy unit transferred
-VOLTS_PER_ENERGY_UNIT: float = 0.08
-# Tolerance = 40% of expected drop, minimum 2 Uno ADC LSB (8 mV at 5mV/LSB).
-# Proportional tolerance handles small give_amounts correctly.
-_TOLERANCE_FRACTION: float = 0.40
-_MIN_TOLERANCE: float = 0.008  # 2 LSB at 5mV/LSB (Uno 10-bit ADC)
+# Normalized voltage drop per SoC unit transferred.
+# Sim value (~0.15) matches the 18650 SoC→OCV plateau slope in sim_backend._SOC_CURVE.
+# Hardware re-fit: discharge at constant load, record (SoC_before, SoC_after, delta_V_mV),
+# compute mean(delta_V / delta_SoC) and replace this constant.
+VOLTS_PER_ENERGY_UNIT: float = 0.15
+# Proportional tolerance: covers Gaussian jitter (σ=0.003) up to ~3σ plus quantization.
+# Spike events (1% prob, σ=0.05) are excluded — those represent genuine measurement failures.
+_TOLERANCE_FRACTION: float = 0.55
+_MIN_TOLERANCE: float = 0.012  # ~2.4 LSB at 5 mV/LSB (Uno 10-bit ADC)
 
 
 @dataclass
