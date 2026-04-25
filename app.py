@@ -13,12 +13,12 @@ from pathlib import Path
 
 import gradio as gr
 
-from spaces.runner import HeadlessRunner
-from spaces.scripted_player import scripted_episode
-from spaces.random_player import random_episode, episode_return
-from spaces.plots import battery_curve, reputation_curve, promise_keep_curve, ledger_table
-from spaces.transcript import render_transcript
-from spaces.recorder import load_prerecorded, save_episode
+from agentgrid_spaces.runner import HeadlessRunner
+from agentgrid_spaces.scripted_player import scripted_episode
+from agentgrid_spaces.random_player import random_episode, episode_return
+from agentgrid_spaces.plots import battery_curve, reputation_curve, promise_keep_curve, ledger_table
+from agentgrid_spaces.transcript import render_transcript
+from agentgrid_spaces.recorder import load_prerecorded, save_episode
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
