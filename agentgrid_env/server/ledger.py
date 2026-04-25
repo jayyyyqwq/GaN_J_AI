@@ -27,9 +27,17 @@ CREATE TABLE IF NOT EXISTS entries (
     status TEXT NOT NULL DEFAULT 'pending',
     prev_hash TEXT NOT NULL,
     this_hash TEXT NOT NULL,
-    ts REAL NOT NULL
+    ts REAL NOT NULL,
+    entry_type TEXT NOT NULL DEFAULT 'trade',
+    parent_id INTEGER
 )
 """
+
+# Migration for file-backed DBs created before entry_type / parent_id existed.
+_MIGRATIONS = [
+    "ALTER TABLE entries ADD COLUMN entry_type TEXT NOT NULL DEFAULT 'trade'",
+    "ALTER TABLE entries ADD COLUMN parent_id INTEGER",
+]
 
 # Normalized voltage drop per SoC unit transferred.
 # Sim value (~0.15) matches the 18650 SoC→OCV plateau slope in sim_backend._SOC_CURVE.
@@ -65,6 +73,11 @@ class CommitmentLedger:
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute(SCHEMA)
+        for stmt in _MIGRATIONS:
+            try:
+                self._conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # column already exists
         self._conn.commit()
 
     def append(
@@ -117,11 +130,57 @@ class CommitmentLedger:
     def update_status(self, entry_id: int, status: str) -> None:
         self._update_status(entry_id, status)
 
+    def append_compute_tick(self, parent_entry_id: int, step: int, agent: str) -> int:
+        """
+        Append a hash-chained `compute_tick` row that links to a parent trade entry.
+        Used to verify compute-side delivery of a trade with `want_type="compute"`.
+        Each tick decrements the seller's lockout; when all ticks land, the parent
+        is marked verified_kept by the env.
+        """
+        parent = self._get(parent_entry_id)
+        if parent is None:
+            raise ValueError(f"parent entry {parent_entry_id} not found")
+        prev = self._latest_hash()
+        payload = json.dumps({
+            "type": "compute_tick",
+            "parent_id": parent_entry_id,
+            "parent_hash": parent["this_hash"],
+            "step": step,
+            "agent": agent,
+        }, sort_keys=True) + prev
+        this_hash = hashlib.sha256(payload.encode()).hexdigest()
+        cur = self._conn.execute(
+            """INSERT INTO entries
+               (step, offerer, accepter, give_type, give_amount,
+                want_type, want_amount, status, prev_hash, this_hash, ts,
+                entry_type, parent_id)
+               VALUES (?, ?, ?, 'compute_tick', 0.0, '', 0.0, 'tick', ?, ?, ?, 'compute_tick', ?)""",
+            (step, agent, agent, prev, this_hash, time.time(), parent_entry_id),
+        )
+        self._conn.commit()
+        return cur.lastrowid or 0
+
     def recent(self, n: int = 5) -> list[dict]:
+        """Return the n most recent *trade* entries (ticks excluded from display)."""
+        rows = self._conn.execute(
+            "SELECT * FROM entries WHERE entry_type='trade' ORDER BY id DESC LIMIT ?", (n,)
+        ).fetchall()
+        return [dict(r) for r in reversed(rows)]
+
+    def recent_all(self, n: int = 50) -> list[dict]:
+        """Return n most recent rows including compute_tick rows (audit/debug only)."""
         rows = self._conn.execute(
             "SELECT * FROM entries ORDER BY id DESC LIMIT ?", (n,)
         ).fetchall()
         return [dict(r) for r in reversed(rows)]
+
+    def ticks_for(self, parent_entry_id: int) -> list[dict]:
+        """Return all compute_tick rows linked to a parent trade, in append order."""
+        rows = self._conn.execute(
+            "SELECT * FROM entries WHERE entry_type='compute_tick' AND parent_id=? ORDER BY id ASC",
+            (parent_entry_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def pending_for(self, accepter: str) -> list[dict]:
         rows = self._conn.execute(

@@ -71,6 +71,11 @@ class HeadlessRunner:
         env = self._env
         step_before = env._game_step
 
+        # Compute lockout — if agent owes compute, force-idle (mirror MCP behavior)
+        if env._lockout_steps.get(agent_id, 0) > 0 and action != "idle":
+            action = "idle"
+            kwargs = {}
+
         if action == "broadcast":
             self._pending_messages.append({
                 "from": agent_id,
@@ -186,20 +191,44 @@ class HeadlessRunner:
             want_type=offer["want_type"],
             want_amount=offer["want_amount"],
         )
-        verified = env._ledger.verify_sim(entry_id, delta_v)
         offer["entry_id"] = entry_id
-        offer["verified_status"] = verified
 
-        env._step_settlements.append({
-            "offerer": offer["from"],
-            "accepter": agent_id,
-            "status": verified,
+        # Compute trades defer verification to lockout completion
+        if offer["want_type"] == "compute":
+            env._ledger.update_status(entry_id, "pending_compute")
+            offer["verified_status"] = "pending_compute"
+            seller = offer["from"]
+            env._lockout_steps[seller] = env._lockout_steps.get(seller, 0) + int(offer["want_amount"])
+            pending = env._lockout_parent_entry.setdefault(seller, [])
+            if isinstance(pending, int):
+                pending = [pending]
+                env._lockout_parent_entry[seller] = pending
+            pending.extend([entry_id] * int(offer["want_amount"]))
+            verified = "pending_compute"
+        else:
+            verified = env._ledger.verify_sim(entry_id, delta_v)
+            offer["verified_status"] = verified
+            env._step_settlements.append({
+                "offerer": offer["from"],
+                "accepter": agent_id,
+                "status": verified,
+            })
+            kept = verified == "verified_kept"
+            env._trust[agent_id].record_settlement(offer["from"], "accept_their_offer", kept)
+            env._trust[offer["from"]].record_settlement(agent_id, "trust_their_payment", kept)
+            env._reputation[offer["from"]] = env._ledger.kept_ratio(offer["from"])
+
+        # Trust-decision audit (every accept, regardless of want_type)
+        env._trust_decisions.append({
+            "step": env._game_step,
+            "agent": agent_id,
+            "chosen_offerer": offer["from"],
+            "Q_chosen": env._trust[agent_id].q(offer["from"], "accept_their_offer"),
+            "Q_alternatives": {
+                p: env._trust[agent_id].q(p, "accept_their_offer")
+                for p in AGENTS if p != agent_id and p != offer["from"]
+            },
         })
-
-        kept = verified == "verified_kept"
-        env._trust[agent_id].record_settlement(offer["from"], "accept_their_offer", kept)
-        env._trust[offer["from"]].record_settlement(agent_id, "trust_their_payment", kept)
-        env._reputation[offer["from"]] = env._ledger.kept_ratio(offer["from"])
 
         for bc in env._broadcast_log:
             if bc["from"] == offer["from"] and (env._game_step - bc["step"]) <= 3:

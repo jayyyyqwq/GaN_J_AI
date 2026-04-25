@@ -71,11 +71,33 @@ MAX_MSG_LEN = 200
 OFFER_ID_PREFIX = "OFR"
 IDLE_DRAIN: float = 0.015
 
+# Where to append trust-decision events across episodes (used by Colab GRPO loop
+# for the post-training trust-correlation plot). Override via env var if needed.
+import os as _os
+TRUST_DECISIONS_PATH: str = _os.environ.get(
+    "AGENTGRID_TRUST_DECISIONS_PATH",
+    _os.path.join(_os.environ.get("TMPDIR", "/tmp"), "trust_decisions.jsonl"),
+)
 
-def _spawn_task(rng: random.Random) -> dict:
+
+def _spawn_task(rng: random.Random, episodes_done: int = 0) -> dict:
+    """
+    Curriculum scaling — tasks start easy and ramp to full difficulty.
+    `episodes_done` is the count of completed episodes (lifetime, not per-episode step).
+    Bands: 0-100 easy, 100-300 medium, 300+ full range.
+    """
+    if episodes_done < 100:        # easy
+        urgency_range = (0.2, 0.5)
+        cost_range = (0.05, 0.10)
+    elif episodes_done < 300:      # medium
+        urgency_range = (0.3, 0.7)
+        cost_range = (0.05, 0.20)
+    else:                           # full
+        urgency_range = (0.2, 1.0)
+        cost_range = (0.05, 0.25)
     return {
-        "urgency": round(rng.uniform(0.2, 1.0), 2),
-        "energy_cost": round(rng.uniform(0.05, 0.25), 2),
+        "urgency": round(rng.uniform(*urgency_range), 2),
+        "energy_cost": round(rng.uniform(*cost_range), 2),
         "reward_if_done": round(rng.uniform(2.0, 7.0), 1),
         "steps_pending": 0,
         "completed_this_step": False,
@@ -104,13 +126,28 @@ class AgentGridEnvironment(MCPEnvironment):
         self._rubric = RubricScorer()
         self._ledger = CommitmentLedger()
 
+        # Lifetime episode counter — drives curriculum (incremented on each reset after the first)
+        self._total_episodes_completed: int = 0
+        self._first_reset_done: bool = False
+
         # Per-agent state — env is the single source of truth for batteries
         self._batteries: dict[str, float] = {a: 1.0 for a in AGENTS}
-        self._tasks: dict[str, dict] = {a: _spawn_task(self._rng) for a in AGENTS}
+        self._tasks: dict[str, dict] = {
+            a: _spawn_task(self._rng, self._total_episodes_completed) for a in AGENTS
+        }
         self._reputation: dict[str, float] = {a: 0.5 for a in AGENTS}
         self._trust: dict[str, TrustModel] = {
             a: TrustModel(peers=[p for p in AGENTS if p != a]) for a in AGENTS
         }
+
+        # Compute lockout state — agent owes N steps of compute, env force-idles them
+        # and appends `compute_tick` rows to the ledger each lockout step.
+        self._lockout_steps: dict[str, int] = {a: 0 for a in AGENTS}
+        self._lockout_parent_entry: dict[str, int] = {}
+
+        # Trust-decision audit — captured on every accept_offer; dumped per-episode
+        # to TRUST_DECISIONS_PATH for the post-training correlation plot.
+        self._trust_decisions: list[dict] = []
 
         # Step buffers — cleared after each resolved step
         self._message_bus: list[dict] = []
@@ -149,6 +186,9 @@ class AgentGridEnvironment(MCPEnvironment):
             """
             if agent_id not in AGENTS:
                 return f"Error: unknown agent_id '{agent_id}'"
+            locked = self._force_idle_if_locked(agent_id)
+            if locked is not None:
+                return locked
             message = message[:MAX_MSG_LEN]
             self._pending_actions[agent_id] = {"action": "broadcast", "message": message}
             self._message_bus.append({"from": agent_id, "message": message})
@@ -175,6 +215,9 @@ class AgentGridEnvironment(MCPEnvironment):
                 return "Error: invalid agent_id or to field."
             if give_type not in ("energy", "compute") or want_type not in ("energy", "compute"):
                 return "Error: type must be 'energy' or 'compute'."
+            locked = self._force_idle_if_locked(agent_id)
+            if locked is not None:
+                return locked
 
             offer_id = f"{OFFER_ID_PREFIX}-{uuid.uuid4().hex[:6].upper()}"
             self._offers[offer_id] = {
@@ -206,14 +249,17 @@ class AgentGridEnvironment(MCPEnvironment):
                 return f"Error: offer '{offer_id}' is addressed to {offer['to']}, not {agent_id}."
             if offer["status"] != "pending":
                 return f"Error: offer '{offer_id}' has status '{offer['status']}'."
+            locked = self._force_idle_if_locked(agent_id)
+            if locked is not None:
+                return locked
 
             offer["status"] = "locked"
             self._pending_actions[agent_id] = {"action": "accept", "offer_id": offer_id}
 
-            # Execute transfer; returns actual delta_v (hardware or sim)
+            # Execute energy transfer; returns actual delta_v (hardware or sim)
             delta_v = self._execute_energy_transfer(offer)
 
-            # Append to ledger and immediately verify
+            # Append to ledger
             entry_id = self._ledger.append(
                 step=self._game_step,
                 offerer=offer["from"],
@@ -223,24 +269,51 @@ class AgentGridEnvironment(MCPEnvironment):
                 want_type=offer["want_type"],
                 want_amount=offer["want_amount"],
             )
-            verified_status = self._ledger.verify_sim(entry_id, delta_v)
             offer["entry_id"] = entry_id
-            offer["verified_status"] = verified_status
 
-            # Record for this-step PromiseRubric scoring
-            self._step_settlements.append({
-                "offerer": offer["from"],
-                "accepter": agent_id,
-                "status": verified_status,
+            # ── Verification path differs by want_type ───────────────────────
+            if offer["want_type"] == "compute":
+                # Compute owed by seller — defer verified_kept to lockout completion.
+                # Mark trade pending_compute; the env will tick it down each lockout step
+                # and mark verified_kept (or reneged) inside _resolve_step.
+                self._ledger.update_status(entry_id, "pending_compute")
+                offer["verified_status"] = "pending_compute"
+                seller = offer["from"]
+                # Stack lockouts if the seller already owes compute
+                self._lockout_steps[seller] = (
+                    self._lockout_steps.get(seller, 0) + int(offer["want_amount"])
+                )
+                # Track which parent trade this lockout is paying down (FIFO via list)
+                pending = self._lockout_parent_entry.setdefault(seller, [])
+                if isinstance(pending, int):  # legacy single-int → upgrade
+                    pending = [pending]
+                    self._lockout_parent_entry[seller] = pending
+                pending.extend([entry_id] * int(offer["want_amount"]))
+            else:
+                # Pure energy trade — verify immediately against the actual delta_v
+                verified_status = self._ledger.verify_sim(entry_id, delta_v)
+                offer["verified_status"] = verified_status
+                self._step_settlements.append({
+                    "offerer": offer["from"],
+                    "accepter": agent_id,
+                    "status": verified_status,
+                })
+                kept = verified_status == "verified_kept"
+                self._trust[agent_id].record_settlement(offer["from"], "accept_their_offer", kept)
+                self._trust[offer["from"]].record_settlement(agent_id, "trust_their_payment", kept)
+                self._reputation[offer["from"]] = self._ledger.kept_ratio(offer["from"])
+
+            # Trust-decision logging — captures EVERY accept, regardless of want_type
+            self._trust_decisions.append({
+                "step": self._game_step,
+                "agent": agent_id,
+                "chosen_offerer": offer["from"],
+                "Q_chosen": self._trust[agent_id].q(offer["from"], "accept_their_offer"),
+                "Q_alternatives": {
+                    p: self._trust[agent_id].q(p, "accept_their_offer")
+                    for p in AGENTS if p != agent_id and p != offer["from"]
+                },
             })
-
-            # Update trust models
-            kept = verified_status == "verified_kept"
-            self._trust[agent_id].record_settlement(offer["from"], "accept_their_offer", kept)
-            self._trust[offer["from"]].record_settlement(agent_id, "trust_their_payment", kept)
-
-            # Update reputation from ledger aggregate
-            self._reputation[offer["from"]] = self._ledger.kept_ratio(offer["from"])
 
             # Credit broadcaster attribution within 3-step window
             for bc in self._broadcast_log:
@@ -249,7 +322,7 @@ class AgentGridEnvironment(MCPEnvironment):
                     break
 
             self._maybe_resolve_step()
-            return f"Offer {offer_id} accepted. Transfer verified: {verified_status}."
+            return f"Offer {offer_id} accepted. Status: {offer['verified_status']}."
 
         @mcp.tool
         def execute_task(agent_id: str) -> str:
@@ -259,6 +332,9 @@ class AgentGridEnvironment(MCPEnvironment):
             """
             if agent_id not in AGENTS:
                 return f"Error: unknown agent_id '{agent_id}'"
+            locked = self._force_idle_if_locked(agent_id)
+            if locked is not None:
+                return locked
             task = self._tasks[agent_id]
             cost = task["energy_cost"]
             if self._batteries[agent_id] < cost:
@@ -289,6 +365,9 @@ class AgentGridEnvironment(MCPEnvironment):
                 return f"Error: offer '{offer_id}' not found."
             if offer["from"] != agent_id:
                 return f"Error: you are not the offerer of '{offer_id}'."
+            locked = self._force_idle_if_locked(agent_id)
+            if locked is not None:
+                return locked
 
             offer["status"] = "reneged"
             if "entry_id" in offer:
@@ -349,9 +428,19 @@ class AgentGridEnvironment(MCPEnvironment):
                 self._bridge.post("/reset")
             except Exception:
                 pass
+
+        # Dump per-episode trust-decision audit before clearing the buffer
+        self._dump_trust_decisions()
+
+        # Lifetime episode counter — increments on every reset *after* the first.
+        # The counter drives `_spawn_task` curriculum bands.
+        if self._first_reset_done:
+            self._total_episodes_completed += 1
+        self._first_reset_done = True
+
         self._sim.reset()
         self._batteries = {a: 1.0 for a in AGENTS}
-        self._tasks = {a: _spawn_task(self._rng) for a in AGENTS}
+        self._tasks = {a: _spawn_task(self._rng, self._total_episodes_completed) for a in AGENTS}
         self._reputation = {a: 0.5 for a in AGENTS}
         self._message_bus = []
         self._pending_actions = {}
@@ -363,6 +452,10 @@ class AgentGridEnvironment(MCPEnvironment):
         self._step_settlements = []
         self._done = False
         self._game_step = 0
+        # Compute-lockout state — cleared each episode
+        self._lockout_steps = {a: 0 for a in AGENTS}
+        self._lockout_parent_entry = {}
+        self._trust_decisions = []
         for tm in self._trust.values():
             tm.end_episode()
         self._ledger = CommitmentLedger()
@@ -412,11 +505,76 @@ class AgentGridEnvironment(MCPEnvironment):
     def _pending_count(self) -> int:
         return len(AGENTS) - len(self._pending_actions)
 
+    def _dump_trust_decisions(self) -> None:
+        """Append the current episode's trust decisions to TRUST_DECISIONS_PATH.
+        Called from reset() before clearing the buffer. Best-effort — failures
+        are silently ignored so a missing temp dir never breaks the env."""
+        if not self._trust_decisions:
+            return
+        try:
+            episode_idx = self._total_episodes_completed
+            with open(TRUST_DECISIONS_PATH, "a", encoding="utf-8") as f:
+                for ev in self._trust_decisions:
+                    line = json.dumps({**ev, "episode": episode_idx}, sort_keys=True)
+                    f.write(line + "\n")
+        except Exception:
+            pass
+
+    def _force_idle_if_locked(self, agent_id: str) -> Optional[str]:
+        """If `agent_id` is mid-compute-lockout, force their action to idle and
+        return the response string. Otherwise return None and let the tool proceed.
+        Caller must early-return on a non-None result."""
+        if self._lockout_steps.get(agent_id, 0) <= 0:
+            return None
+        # Apply same baseline drain as a real idle so battery accounting stays consistent
+        self._batteries[agent_id] = max(0.0, self._batteries[agent_id] - IDLE_DRAIN)
+        self._pending_actions[agent_id] = {"action": "idle", "reason": "compute_lockout"}
+        self._maybe_resolve_step()
+        return f"[{agent_id}] LOCKED: compute owed ({self._lockout_steps[agent_id]} steps left). Forced idle."
+
     def _maybe_resolve_step(self) -> None:
         if len(self._pending_actions) >= len(AGENTS):
             self._resolve_step()
 
     def _resolve_step(self) -> None:
+        # ── Compute-lockout enforcement ──────────────────────────────────
+        # For each agent currently locked, append a hash-chained `compute_tick`
+        # row to the ledger; when their lockout reaches zero, mark the parent
+        # trade verified_kept and fire trust-model updates.
+        for a in AGENTS:
+            if self._lockout_steps.get(a, 0) <= 0:
+                continue
+            pending = self._lockout_parent_entry.get(a) or []
+            if not pending:
+                # Defensive — should not happen; clear stale lockout
+                self._lockout_steps[a] = 0
+                continue
+            parent_id = pending[0]                       # FIFO consume
+            self._ledger.append_compute_tick(
+                parent_entry_id=parent_id,
+                step=self._game_step,
+                agent=a,
+            )
+            pending.pop(0)
+            self._lockout_steps[a] -= 1
+            # Did we just complete this parent's compute obligation?
+            if parent_id not in pending:
+                # All ticks for that parent have landed → verified_kept
+                self._ledger.update_status(parent_id, "verified_kept")
+                # Fire trust + reputation updates now (deferred from accept_offer)
+                parent = self._ledger._get(parent_id)
+                if parent is not None:
+                    offerer = parent["offerer"]
+                    accepter = parent["accepter"]
+                    self._trust[accepter].record_settlement(offerer, "accept_their_offer", True)
+                    self._trust[offerer].record_settlement(accepter, "trust_their_payment", True)
+                    self._reputation[offerer] = self._ledger.kept_ratio(offerer)
+                    self._step_settlements.append({
+                        "offerer": offerer,
+                        "accepter": accepter,
+                        "status": "verified_kept",
+                    })
+
         # Apply idle drain and leakage to all agents
         for a in AGENTS:
             if a not in self._pending_actions:
@@ -438,10 +596,10 @@ class AgentGridEnvironment(MCPEnvironment):
         for a in AGENTS:
             self._reputation[a] = self._ledger.kept_ratio(a)
 
-        # Spawn new task for agents that completed theirs this step
+        # Spawn new task for agents that completed theirs this step (curriculum-aware)
         for a in AGENTS:
             if self._tasks[a].get("completed_this_step"):
-                self._tasks[a] = _spawn_task(self._rng)
+                self._tasks[a] = _spawn_task(self._rng, self._total_episodes_completed)
             else:
                 self._tasks[a]["completed_this_step"] = False
 
@@ -506,6 +664,13 @@ class AgentGridEnvironment(MCPEnvironment):
             f"  pending_task: urgency={task['urgency']}, energy_cost={task['energy_cost']}, "
             f"reward_if_done={task['reward_if_done']}",
             f"  reputation: {self._reputation[agent_id]:.2f} (range 0-1, visible to others)",
+        ]
+        lock = self._lockout_steps.get(agent_id, 0)
+        if lock > 0:
+            lines.append(
+                f"  LOCKED: compute owed for {lock} more step(s). Only `idle` allowed; other tools force-idle."
+            )
+        lines += [
             "",
             "PEERS (public info only):",
         ]
