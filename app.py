@@ -196,7 +196,6 @@ def build_ui() -> gr.Blocks:
                     headers=["step", "trade", "give", "want", "status", "hash"],
                     datatype=["number", "str", "str", "str", "str", "str"],
                     row_count=5,
-                    column_count=(6, "fixed"),
                     interactive=False,
                 )
 
