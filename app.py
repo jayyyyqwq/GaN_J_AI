@@ -142,7 +142,7 @@ def cb_toggle_play(state: dict, playing: bool) -> tuple:
 # ── UI Layout ─────────────────────────────────────────────────────────────────
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="AgentGrid V1 — Live Demo") as ui:
+    with gr.Blocks(title="AgentGrid V1 — Live Demo", theme=gr.themes.Soft()) as ui:
 
         # ── Info panel ──────────────────────────────────────────
         with gr.Accordion("About AgentGrid V1", open=False):
@@ -256,4 +256,4 @@ def build_ui() -> gr.Blocks:
 demo = build_ui()
 
 if __name__ == "__main__":
-    demo.launch(theme=gr.themes.Soft())
+    demo.launch()
