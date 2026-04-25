@@ -1,14 +1,20 @@
 {
-  "_comment": "Calibrated from INA219 logs collected on Day 2. Update after each hardware session.",
+  "_comment": "Calibrated from Uno ADC discharge logs collected on Day 2. Update after each hardware session.",
   "volts_per_energy_unit": 0.08,
   "voltage_noise_sigma": 0.005,
   "idle_drain_per_step": 0.015,
   "relay_duration_per_unit_seconds": 2.5,
   "charge_efficiency": 0.85,
-  "ina219_addresses": {
-    "A": "0x40",
-    "B": "0x41",
-    "C": "0x44"
+  "uno_serial_port": "/dev/ttyACM0",
+  "uno_analog_pins": {
+    "A": "A0",
+    "B": "A1",
+    "C": "A2"
+  },
+  "led_pins": {
+    "A": "D9",
+    "B": "D10",
+    "C": "D11"
   },
   "relay_pins_bcm": {
     "A_to_B": 17,

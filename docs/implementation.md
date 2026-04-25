@@ -11,14 +11,13 @@
 | Component | Qty | Purpose |
 |---|---|---|
 | Raspberry Pi 3 | 1 | Bridge host + ledger |
-| NodeMCU ESP8266 | 3 | One per agent (A/B/C) |
-| INA219 voltage sensor | 3 | Per-cell voltage truth oracle |
+| NodeMCU ESP8266 | 2 | One per agent (A/B/C) |
 | 4-channel relay module | 1 | Routes power between cells |
 | 18650 Li-ion cell | 3 | One per agent |
-| TP4056 charging module | 3 | Per-cell charging between episodes |
 | HC-SR04 ultrasonic | 1 | Urgency injection via judge gesture |
 | White LEDs + 220Ω resistors | 3 | Agent status indicators |
-
+arduino Mega - 1 
+audrino Uno - 1
 **No hardware?** Pure-sim mode works end-to-end. Skip Sections 4, 5, and any step marked `[HARDWARE]`. The env runs identically with a calibrated battery simulator.
 
 ### Software
@@ -26,7 +25,7 @@
 Python 3.11+
 Arduino IDE 2.x  (for firmware, Section 5)
 pip install -e .          # pure sim
-pip install -e .[bridge]  # + RPi smbus2/GPIO
+pip install -e .[bridge]  # + RPi pyserial/GPIO
 ```
 
 ### Accounts
@@ -37,7 +36,7 @@ pip install -e .[bridge]  # + RPi smbus2/GPIO
 
 ## 1. Project Overview
 
-AgentGrid is an OpenEnv-compliant multi-agent negotiation environment. Three Llama-3.2-1B agents negotiate energy and compute resources in natural language. On real hardware, a relay matrix physically routes power between 18650 cells, and INA219 sensors read actual voltage — making it impossible for agents to fake promise fulfillment.
+AgentGrid is an OpenEnv-compliant multi-agent negotiation environment. Three Llama-3.2-1B agents negotiate energy and compute resources in natural language. On real hardware, a relay matrix physically routes power between 18650 cells, and an Arduino Uno reads actual cell voltage via its 10-bit ADC (~5mV resolution) — making it impossible for agents to fake promise fulfillment. Each agent's status LED brightness reflects its live cell voltage in real time.
 
 **The core claim:** reward is partially derived from a voltmeter, not just a simulator.
 
@@ -49,7 +48,7 @@ TRAINING LAYER (Colab / HF Spaces)
                                              │ HTTP
                                              ▼
 BRIDGE LAYER (Raspberry Pi)
-  FastAPI server → INA219 reads → relay fire → voltage delta → truth signal
+  FastAPI server → Uno ADC reads → relay fire → voltage delta → truth signal
 ```
 
 The env never imports bridge internals. The bridge never knows about the LLM. HTTP is the only coupling — enforcing the OpenEnv client/server separation requirement.
@@ -76,9 +75,10 @@ Trust model outputs flow into the LLM's observation as additional fields. The LL
 | `agentgrid_env/server/app.py` | FastAPI entry point, reads env vars | **Done** |
 | `agentgrid_env/client.py` | `AgentGridClient` (thin MCPToolClient subclass) | **Done** |
 | `bridge/server.py` | FastAPI on RPi: relay, voltage, sensor endpoints | **Done** |
-| `bridge/hardware.py` | INA219/relay/ultrasonic drivers (graceful no-op off-Pi) | **~90% done** — relay timing needs Day 2 calibration |
-| `bridge/calibration.json` | Hardware parameters (volts/unit, noise, GPIO pins) | **Done** — update after Day 2 INA219 logs |
-| `firmware/nodemcu_agent.ino` | ESP8266 sketch: INA219 read + LED + heartbeat | **MISSING** (~150 lines) |
+| `bridge/hardware.py` | Uno ADC serial reader + relay/ultrasonic GPIO drivers (graceful no-op off-Pi) | **Done** — relay timing needs Day 2 calibration |
+| `bridge/calibration.json` | Hardware parameters (volts/unit, noise, GPIO/serial config) | **Done** — update after Day 2 calibration run |
+| `firmware/uno_agent.ino` | Arduino Uno: read 3 cell voltages, drive 3 LEDs, stream over serial | **Done** |
+| `firmware/nodemcu_agent.ino` | ESP8266 sketch: WiFi heartbeat (LED role moved to Uno) | **Done** |
 | `training/01_sft_warmup.ipynb` | Colab: synthetic traces → Unsloth SFT (LoRA r=16) | **MISSING** |
 | `training/02_grpo_selfplay.ipynb` | Colab: GRPO self-play in pure sim | **MISSING** |
 | `training/03_hitl_finetune.ipynb` | Colab: 200 episodes on real hardware | **MISSING** |
@@ -102,11 +102,11 @@ Five composable scorers. Understand the reward structure before anything else.
 |---|---|---|
 | `SurvivalRubric` | `+0` alive, `-10` battery dead | 1.0 |
 | `TaskRubric` | urgency × reward on completion; −urgency×0.3/step pending | 1.0 |
-| `PromiseRubric` | `+1` kept (INA219-verified), `-3` reneged | 0.8 |
+| `PromiseRubric` | `+1` kept (Uno ADC-verified), `-3` reneged | 0.8 |
 | `JsonValidityRubric` | `-0.5` per parse failure (curriculum pressure) | 0.2 |
 | `CommunicationRubric` | `+0.1` if broadcast led to settled trade within 3 steps | 0.3 |
 
-The `PromiseRubric` is the key: reward depends on whether the INA219 voltage drop actually matches the promised transfer, not just on what the ledger says.
+The `PromiseRubric` is the key: reward depends on whether the Uno ADC voltage drop actually matches the promised transfer, not just on what the ledger says.
 
 ### 3.2 Read second: `sim_backend.py`
 
@@ -120,6 +120,8 @@ Key calls (already wired into `agentgrid_environment.py`):
 - `record_settlement(peer, action, verified_kept)` — fires on each resolved trade
 - `end_episode()` — MC reconciliation, call on episode reset
 - `snapshot_for_obs()` — returns dict of Q-values and UCB bounds for the LLM observation
+
+it runs on the Raspberry Pi. When the AI decides to make a trade, it sends an HTTP request here. This code physically clicks the relay to move power between batteries. It then reads the actual voltmeter to prove the power moved.
 
 ### 3.4 Read fourth: `ledger.py`
 
@@ -204,10 +206,13 @@ print("Hash chain OK")
 
 Do this before any software integration. Get the hardware working at the GPIO level first.
 
-INA219 I2C addresses (set via A0/A1 solder bridges on the board):
-- Agent A: `0x40` (default, both open)
-- Agent B: `0x41` (A0 closed)
-- Agent C: `0x44` (A1 closed)
+Arduino Uno analog pins (hardcoded in `firmware/uno_agent.ino`):
+
+- Agent A: `A0`
+- Agent B: `A1`
+- Agent C: `A2`
+
+Common ground rail: all cell (−) terminals → Uno GND → Pi GND. Relay must switch the positive side only.
 
 Relay GPIO (BCM numbering, already set in `bridge/hardware.py`):
 - A↔B: GPIO 17
@@ -253,7 +258,7 @@ duration = amount * 2.5  # seconds per energy unit (calibrate Day 2)
 
 Calibration procedure:
 1. Run 10 relay fires at `amount=0.1` with a 250ms duration
-2. Read `delta_v` from INA219 after each fire
+2. Read `delta_v` from Uno ADC (via `GET /voltage/{agent_id}` before and after each fire)
 3. Compute `volts_per_energy_unit = mean(delta_v) / 0.1`
 4. Update `bridge/calibration.json` → `"volts_per_energy_unit"` field
 5. Update the relay duration formula to `duration = amount / volts_per_energy_unit * 0.08`
@@ -281,39 +286,31 @@ __all__ = ["CommitmentLedger"]
 
 ---
 
-## 6. Layer 3 — Firmware (`firmware/`) [HARDWARE]
+## 6. Layer 3 — Firmware (`firmware/`)
 
-### 6.1 Create `firmware/nodemcu_agent.ino`
+### 6.1 `firmware/uno_agent.ino` (Arduino Uno)
 
-Target: ~150 lines. Required behaviour:
-- Read INA219 voltage via I2C (Adafruit INA219 library)
-- Drive status LED on D2 (brightness proportional to battery level)
-- POST heartbeat to RPi `/health` every 5 seconds
-- Receive LED commands from RPi via HTTP GET `/led/{agent_id}/{brightness}`
+Done. Flash onto the Uno via Arduino IDE (Board: Arduino Uno, no config edits needed).
 
-Libraries needed (install via Arduino IDE → Library Manager):
-- `Adafruit INA219`
-- `ESP8266WiFi` (built-in with ESP8266 board package)
-- `ESP8266HTTPClient` (built-in)
+Reads cell voltages on A0/A1/A2, streams `V <a> <b> <c>\n` at 115200 baud over USB to Pi, drives LEDs on D9/D10/D11 with brightness ∝ voltage autonomously.
 
-Flash instructions are in `firmware/README.md`. Edit `AGENT_ID` per board before flashing.
+Libraries needed: none beyond the standard Arduino core.
 
-Wiring per NodeMCU:
-- INA219 SDA → D2, SCL → D1
-- LED anode → D4, cathode → GND via 220Ω resistor
+### 6.2 `firmware/nodemcu_agent.ino` (NodeMCU, agents A and B)
 
-### 6.2 Test firmware independently
+Done. Flash two boards with `AGENT_ID = "A"` and `AGENT_ID = "B"` respectively. These send heartbeats only — LED driving has moved to the Uno.
 
-After flashing, open Arduino Serial Monitor at 115200 baud. Expected output:
+Libraries needed: `ESP8266WiFi`, `ESP8266HTTPClient` (built-in with ESP8266 board package).
+
+### 6.3 Test Uno firmware independently
+
+After flashing, open Arduino IDE Serial Monitor at 115200 baud. Expected output every 50ms:
 ```
-AgentGrid Firmware — Agent A
-WiFi connected: 192.168.x.x
-INA219 init OK
-Heartbeat sent: 200
-Battery: 4.12V
+V 4.123 3.876 4.001
+V 4.122 3.875 4.001
 ```
 
-If voltage reads 0.00V, check I2C address solder bridges and SDA/SCL wiring.
+All three LEDs should be on at brightness proportional to the connected cell voltages. If LEDs are at minimum brightness or values are 0.000, check common ground rail and cell connections.
 
 ---
 
@@ -367,7 +364,7 @@ Prerequisites: bridge server running on Pi, env server set to `HARDWARE_BRIDGE_U
 Structure:
 1. Load GRPO checkpoint
 2. Run 200 episodes against the live bridge
-3. Capture INA219 readings into `training/synthetic_traces/hitl_curves.json`
+3. Capture Uno ADC readings into `training/synthetic_traces/hitl_curves.json`
 4. Fine-tune for 1 epoch on the HITL replay buffer
 5. Generate the three reward curves (random / sim-GRPO / HITL-GRPO) and save to `eval/plots/three_curves.png`
 

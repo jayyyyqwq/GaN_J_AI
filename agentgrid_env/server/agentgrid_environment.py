@@ -2,7 +2,7 @@
 AgentGrid Environment — MCPEnvironment implementation.
 
 Three LLM agents negotiate energy and compute in natural language.
-Hardware bridge (Raspberry Pi + INA219 + relay matrix) is optional;
+Hardware bridge (Raspberry Pi + Arduino Uno ADC + relay matrix) is optional;
 without it the calibrated sim_backend runs instead.
 
 MCP tools exposed to LLM agents:

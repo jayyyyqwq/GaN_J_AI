@@ -6,11 +6,11 @@ AgentGridEnvironment._batteries is the single source of truth.
 
 Physics layers:
   - SoC→OCV piecewise curve (nonlinear 18650-style discharge)
-  - INA219 noise: ADC quantization + thermal jitter + rare spike
+  - ADC noise: quantization + thermal jitter + rare spike (models Uno 10-bit ADC)
   - State-dependent relay efficiency (higher resistance at low SoC)
 
 Calibration constants are module-level stubs. Replace with values
-fitted from INA219 discharge logs and relay transfer measurements.
+fitted from Uno ADC discharge logs and relay transfer measurements.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ _SOC_CURVE: list[tuple[float, float]] = [
     (0.00, 0.000),
 ]
 
-# INA219 ADC resolution (12-bit at ~4.2V full scale, normalized to 0–1)
+# Uno 10-bit ADC resolution (~5mV/LSB at 5V ref, normalized to 0–1 SoC units)
 _ADC_RESOLUTION: float = 0.001
 
 # Thermal + ADC noise floor (Gaussian σ)
@@ -90,12 +90,12 @@ class SimBackend:
         """
         Drain `amount` SoC units from a cell.
         Returns (new_soc, observed_delta_v) — caller updates self._batteries.
-        delta_v is in voltage units (INA219-observable), not SoC units.
+        delta_v is in voltage units (ADC-observable), not SoC units.
         """
         actual = min(amount, current_soc)
         new_soc = max(0.0, current_soc - actual)
         true_delta_v = soc_to_voltage(current_soc) - soc_to_voltage(new_soc)
-        observed_delta_v = self._ina219_noise(true_delta_v)
+        observed_delta_v = self._adc_noise(true_delta_v)
         return round(new_soc, 4), round(abs(observed_delta_v), 4)
 
     def compute_transfer_delta_v(
@@ -112,7 +112,7 @@ class SimBackend:
         new_to = min(1.0, to_soc + actual * efficiency)
 
         true_delta_v = soc_to_voltage(from_soc) - soc_to_voltage(new_from)
-        observed_delta_v = self._ina219_noise(true_delta_v)
+        observed_delta_v = self._adc_noise(true_delta_v)
         return round(new_from, 4), round(new_to, 4), round(abs(observed_delta_v), 4)
 
     def get_urgency_from_sensor(self) -> float:
@@ -121,12 +121,12 @@ class SimBackend:
 
     # ── Private helpers ────────────────────────────────────────────────────────
 
-    def _ina219_noise(self, true_value: float) -> float:
+    def _adc_noise(self, true_value: float) -> float:
         """
-        Model INA219 ADC output for a known true voltage delta.
+        Model Uno 10-bit ADC output for a known true voltage delta.
           - ADC quantization to nearest _ADC_RESOLUTION
           - Gaussian thermal + noise-floor jitter
-          - Rare I2C spike (bit flip / glitch)
+          - Rare spike (bit flip / glitch)
         """
         quantized = round(true_value / _ADC_RESOLUTION) * _ADC_RESOLUTION
         jitter = self._rng.gauss(0, _VOLTAGE_NOISE_STD)

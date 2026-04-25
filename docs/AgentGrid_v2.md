@@ -24,12 +24,12 @@
 
 ### 1.1 Environment Innovation (40%)
 - **Novelty axis 1:** LLM agents negotiating in *natural language* over *physical resources*. Searched: nobody has shipped this on OpenEnv. Closest prior art is text-only market sims (no hardware) and RL energy-sharing (no language).
-- **Novelty axis 2:** Reward is partially derived from a physical quantity (battery voltage measured via ADC). The environment cannot be cheated by gaming the simulator because the simulator IS reality.
+- **Novelty axis 2:** Reward is partially derived from a physical quantity (battery voltage measured via Arduino Uno 10-bit ADC, ~5mV resolution). The environment cannot be cheated by gaming the simulator because the simulator IS reality. Each agent's status LED brightness tracks its live cell voltage — energy flow is physically visible.
 - **Challenge:** Partial observability is real — agents see only their own battery + received messages. Other agents' true state must be inferred from what they say (theory of mind that the rubric explicitly asks for).
 - **Researcher test:** "Could a researcher write a paper about training on this?" Yes — *Grounded Multi-Agent Negotiation: When LLM Promises Have Physical Consequences*. That's a real ICLR/NeurIPS workshop submission.
 
 ### 1.2 Storytelling (30%)
-The 90-second demo (Section 9) is built around a single moment: judge waves hand at the ultrasonic sensor → Agent C's task urgency spikes → Agent C broadcasts a panicked plea in English → Agents A and B reason aloud about reputation history → A accepts, the relay clicks audibly, C's LED brightens, C completes the task, A's reputation score increments on screen. That sequence is unforgettable.
+The 90-second demo (Section 9) is built around a single moment: judge waves hand at the ultrasonic sensor → Agent C's task urgency spikes → Agent C broadcasts a panicked plea in English → Agents A and B reason aloud about reputation history → A accepts, the relay clicks audibly, C's LED brightens (Uno ADC detects the voltage rise on cell C), C completes the task, A's reputation score increments on screen. That sequence is unforgettable.
 
 ### 1.3 Reward Improvement (20%)
 We will show three curves on the same axes:
@@ -81,9 +81,9 @@ Reward is a composable rubric (per OpenEnv's preferred pattern), not a monolithi
          ▼               ▼                ▼               ▼
 ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
 │ Agent A      │ │ Agent B      │ │ Agent C      │ │ Relay Matrix │
-│ NodeMCU+LED  │ │ NodeMCU+LED  │ │ NodeMCU+LED  │ │ 4-channel    │
-│ + INA219 ADC │ │ + INA219 ADC │ │ + INA219 ADC │ │ + Ultrasonic │
-│ + 18650 cell │ │ + 18650 cell │ │ + 18650 cell │ │   HC-SR04    │
+│ NodeMCU hbt  │ │ NodeMCU hbt  │ │ Uno LED D11  │ │ 4-channel    │
+│ Uno LED D9   │ │ Uno LED D10  │ │ + 18650 cell │ │ + Ultrasonic │
+│ + 18650 cell │ │ + 18650 cell │ │ Uno A2 read  │ │   HC-SR04    │
 └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
@@ -95,19 +95,18 @@ Reward is a composable rubric (per OpenEnv's preferred pattern), not a monolithi
 
 | Component | Qty | Role | Why this and not v1's choice |
 |---|---|---|---|
-| NodeMCU ESP8266 | **3** | Agents A/B/C | N=3 unlocks coalition dynamics |
+| Arduino Uno | **1** | Voltage sensor + LED driver | Reads all 3 cell voltages on A0/A1/A2; drives 3 LEDs on D9/D10/D11; streams to Pi over USB serial. One board handles all voltage sensing. |
+| NodeMCU ESP8266 | **2** | Agents A and B heartbeat | WiFi heartbeat only; LED role moved to Uno |
 | Raspberry Pi 3 | 1 | Bridge + ledger host | Same as v1 |
-| INA219 current/voltage sensor | **3** | Real-time per-cell voltage truth | **New — this is what makes hardware in-loop.** Reads actual cell voltage so the env knows whether a promised energy transfer happened |
-| 4-channel relay module | **1** (replaces single relay) | Routes power between any pair of cells | Enables the bidirectional trades a 3-agent system needs |
-| 18650 cell | 3 | One per agent | One per agent (v1 lumped them) |
-| TP4056 charging module | 3 | Per-cell safe charging during demo | Lets you reset between demo runs without swapping cells |
-| HC-SR04 ultrasonic | 1 | Urgency injection (judge gesture) | Same as v1 — keep it, it's the demo trigger |
-| White LEDs + 220Ω resistors | 3 | Per-agent status indication | Same as v1 |
-| Jumper wires (M-F, M-M) | bundle | Wiring | No breadboard — solder or use screw terminals for travel |
+| 4-channel relay module | **1** | Routes power between any pair of cells | Enables bidirectional trades |
+| 18650 cell | 3 | One per agent | Shared common-ground rail with Uno |
+| TP4056 charging module | 3 | Per-cell safe charging during demo | Reset between runs without swapping cells |
+| HC-SR04 ultrasonic | 1 | Urgency injection (judge gesture) | Demo trigger |
+| White LEDs + 220Ω resistors | 3 | Per-agent status indication (brightness ∝ voltage) | Autonomous — Uno updates them from live ADC readings |
+| Arduino Mega | 1 | Spare | Reserve for HC-SR04 offload if Pi GPIO timing is jittery |
+| Jumper wires + Zener diodes | bundle | Wiring + ADC spike protection | 5.1V Zeners on A0/A1/A2 protect Uno from relay transients |
 
-**Cost delta from v1:** ~₹1,500 extra (INA219 ×3, 4-ch relay, TP4056 ×3). Worth it; without INA219 the hardware loop isn't actually closed.
-
-**Excluded:** Arduino boards (logic-level mismatch). Any 5V-only module on the ESP8266 side. Bluetooth (WiFi is enough; one less radio to debug).
+**Cost delta from v1:** ~₹800 extra (Uno, Mega, 4-ch relay, TP4056 ×3). Without the Uno ADC reading real cell voltage, the hardware loop isn't actually closed.
 
 ---
 
@@ -192,7 +191,7 @@ Choose ONE action. Respond ONLY with valid JSON:
 | `broadcast` | Adds message to next-step inbox of all peers | None |
 | `offer` | Creates pending offer in ledger, awaiting peer's `accept` | None until accepted |
 | `accept` | Locks the trade; bridge schedules relay fire | Relay routes power between cells |
-| `execute_task` | Burns energy, completes task if battery sufficient | Voltage drop visible on INA219 |
+| `execute_task` | Burns energy, completes task if battery sufficient | Voltage drop visible on Uno ADC + LED dims |
 | `renege` | Cancel a promised delivery after receiving counter-payment | Ledger marks as broken; reputation drops |
 | `idle` | Skip turn, baseline drain only | Small voltage drop |
 
@@ -203,7 +202,7 @@ def _build_rubric(self):
     return Rubric([
         SurvivalRubric(weight=1.0),         # +0 alive, -10 if battery hit 0
         TaskRubric(weight=1.0),             # urgency * 5 on completion, -urgency*0.3/step pending
-        PromiseRubric(weight=0.8),          # +1 kept (verified by INA219 voltage drop), -3 reneged
+        PromiseRubric(weight=0.8),          # +1 kept (verified by Uno ADC voltage drop), -3 reneged
         JsonValidityRubric(weight=0.2),     # -0.5 per parse failure (curriculum trick)
         CommunicationRubric(weight=0.3),    # +0.1 if message led to a settled trade within 3 steps
     ])
@@ -213,7 +212,7 @@ def _build_rubric(self):
 
 ### 4.5 Sim-only fallback
 
-If `hardware_url` is None, the env falls back to a calibrated simulator (battery curves fit from real INA219 logs collected on Day 2). This lets training run massively in parallel on Colab; HITL fine-tuning happens at the end with the real rig connected. Submission requirement: env runs end-to-end on HF Spaces without hardware.
+If `hardware_url` is None, the env falls back to a calibrated simulator (battery curves fit from real Uno ADC logs collected on Day 2). This lets training run massively in parallel on Colab; HITL fine-tuning happens at the end with the real rig connected. Submission requirement: env runs end-to-end on HF Spaces without hardware.
 
 ---
 
@@ -281,11 +280,11 @@ class CommitmentLedger:
         # insert with prev_hash=prev, this_hash=h
         ...
 
-    def verify_against_hardware(self, entry_id, ina219_reading):
+    def verify_against_hardware(self, entry_id, adc_reading):
         """Did the promised voltage drop actually happen on the offerer's cell?"""
         entry = self._get(entry_id)
         expected_drop = entry["give_amount"] * VOLTS_PER_ENERGY_UNIT
-        actual_drop = ina219_reading["delta_v"]
+        actual_drop = adc_reading["delta_v"]
         if abs(actual_drop - expected_drop) < TOLERANCE:
             self._update_status(entry_id, "verified_kept")
         else:
@@ -295,7 +294,7 @@ class CommitmentLedger:
 **Why this earns its place** (unlike v1's blockchain idea):
 - N=3 + defection-allowed creates real Byzantine-ish trust problem
 - Hash chain prevents an agent from rewriting its own history
-- INA219 readings are the oracle — physical reality is the source of truth, not consensus
+- Uno ADC readings are the oracle — physical reality is the source of truth, not consensus
 - Reputation in the observation is computed from the verified-kept ratio
 - Judges can audit any episode end-to-end
 
@@ -337,7 +336,8 @@ End on: *"AgentGrid. The first OpenEnv environment where lying has a voltage."*
 - **Cutoff:** If SFT model can't produce valid JSON 90%+ of the time by midnight, freeze the env interface and move on with what works.
 
 ### Day 2 (April 25) — Bridge + Stage 2 GRPO
-- **Morning (3 h):** FastAPI server on Pi. INA219 polling endpoint. Relay-fire endpoint. Ledger init. Test end-to-end with hand-crafted HTTP calls.
+
+- **Morning (3 h):** FastAPI server on Pi. Uno serial voltage endpoint. Relay-fire endpoint. Ledger init. Test end-to-end with hand-crafted HTTP calls.
 - **Midday (1 h):** Connect env to bridge. Run 5 manual episodes to log real battery curves → fit sim parameters.
 - **Afternoon onsite (4 h):** Push env to HF Spaces. Kick off GRPO self-play training in Colab using onsite credits. Three parallel runs with different seeds.
 - **Evening (2 h):** Pick best checkpoint. Verify it runs on Spaces without hardware.
@@ -364,7 +364,7 @@ End on: *"AgentGrid. The first OpenEnv environment where lying has a voltage."*
 | LLM produces invalid JSON | Medium | JsonValidityRubric trains it out; fallback parser strips markdown fences |
 | GRPO doesn't improve over SFT | Medium | Show the curve anyway; SFT alone with the rubric still demonstrates env quality |
 | Ledger desync between agents and bridge | Low | Bridge is single source of truth; agents see ledger only via observation, not local state |
-| Relay welding (stuck closed) | Low | Use SSR-rated 5V relay; INA219 detects stuck-closed and aborts episode |
+| Relay welding (stuck closed) | Low | Use SSR-rated 5V relay; Uno ADC detects missing voltage drop and aborts episode |
 | Demo cell dies during pitch | Low | Spare charged cell on standby, swap takes 15 sec |
 
 ---
@@ -384,7 +384,7 @@ agentgrid/
 ├── bridge/                          # runs on the Pi
 │   ├── server.py                   # FastAPI app
 │   ├── ledger.py                   # hash-chained SQLite
-│   ├── hardware.py                 # INA219 + relay + ultrasonic drivers
+│   ├── hardware.py                 # Uno ADC serial reader + relay + ultrasonic drivers
 │   └── calibration.json
 ├── firmware/
 │   ├── nodemcu_agent.ino           # LED status + heartbeat to Pi

@@ -1,7 +1,7 @@
 ### Phase 1: Hardware & Base Implementation
 
-* **Wiring:** Connect the 3 NodeMCUs, INA219 voltage sensors, and the 4-channel relay to the 18650 cells. Wire TP4056 chargers per cell so cells can be topped up between episodes without swapping.
-* **Firmware:** Flash the ESP8266 boards to read INA219 data via I2C, drive a status LED on D4, and POST heartbeats to the Raspberry Pi every 5 seconds. Edit `AGENT_ID` per board before flashing.
+* **Wiring:** Connect the Arduino Uno (A0/A1/A2) to the 18650 cells via a common ground rail. Wire three white LEDs (220Ω) to Uno D9/D10/D11. Connect 4-channel relay to Pi GPIO. Wire TP4056 chargers per cell. Connect Uno to Pi via USB.
+* **Firmware:** Flash `firmware/uno_agent.ino` onto the Uno (reads voltages, drives LEDs, streams to Pi). Flash `firmware/nodemcu_agent.ino` onto the two NodeMCUs (set `AGENT_ID = "A"` / `"B"`) for heartbeats.
 * **Bridge:** Boot the FastAPI bridge server on the Raspberry Pi to expose relay, voltage, ultrasonic, and ledger endpoints.
 * **Env Sanity Check:** Verify `AgentGridEnv`, the composable rubrics, and the tabular Q-learning trust model run locally without exceptions in pure-sim mode.
 * **Ledger Stub:** Create `bridge/ledger_bridge.py` so `bridge/server.py` imports `CommitmentLedger` cleanly without the fallback warning.
@@ -22,8 +22,8 @@
 
 ### Phase 4: Testing & Calibration
 
-* **Relay Calibration:** Run 10 relay fires at `amount=0.1` with 250ms duration. Read voltage delta from the INA219, compute `volts_per_energy_unit = mean(delta_v) / 0.1`, and update `bridge/calibration.json`. Update the duration formula in `bridge/hardware.py` to `duration = amount / volts_per_energy_unit * 0.08`.
-* **E2E Validation:** Run the trained policy against the live hardware. Confirm physical relay clicks perfectly match the LLM's accepted trades and INA219 registers the expected voltage drop within tolerance.
+* **Relay Calibration:** Run 10 relay fires at `amount=0.1` with 250ms duration. Read voltage delta from the Uno ADC (`GET /voltage/{agent_id}` before and after each fire), compute `volts_per_energy_unit = mean(delta_v) / 0.1`, and update `bridge/calibration.json`. Update the duration formula in `bridge/hardware.py` to `duration = amount / volts_per_energy_unit * 0.08`.
+* **E2E Validation:** Run the trained policy against the live hardware. Confirm physical relay clicks perfectly match the LLM's accepted trades and the Uno ADC registers the expected voltage drop within tolerance. Observe LEDs dim/brighten to confirm voltage changes are physically visible.
 * **Ablation Run:** Compare the with-trust-model policy against the zeroed-trust policy on the same held-out scenarios. Generate `eval/plots/trust_model_ablation.png` showing the gap.
 * **Hash Chain Verification:** Sanity-test the SHA-256 hash chain in `ledger.py` by appending two entries and confirming `prev_hash` linkage is correct. Required for the auditability claim.
 
@@ -62,9 +62,9 @@ You can build and test your entire stack without touching a single wire.
 
 Gautam's goal is to make the physical rig reachable over the network.
 
-* **Wiring & Firmware:** Connect the 3 NodeMCUs to the INA219s (I2C addresses 0x40/0x41/0x44 via A0/A1 solder bridges) and flash `nodemcu_agent.ino`. The boards need to read voltage, drive the LED on D4, and send heartbeats to `/health`.
-* **Relay Routing:** Wire the 18650 cells through the 4-channel relay module. GPIO 17 (A↔B), GPIO 27 (A↔C), GPIO 22 (B↔C). Test each relay with a raw `GPIO.output` script before any HTTP integration.
-* **Ultrasonic & LEDs:** Wire HC-SR04 (TRIG=GPIO 23, ECHO=GPIO 24) and the three white LEDs with 220Ω resistors.
+* **Wiring & Firmware:** Flash `firmware/uno_agent.ino` onto the Arduino Uno. Wire cells A/B/C to Uno analog pins A0/A1/A2 (common ground rail shared with Uno and Pi). Wire three white LEDs (220Ω) to Uno D9/D10/D11 — LED brightness tracks live cell voltage autonomously. Flash `nodemcu_agent.ino` onto the two NodeMCU boards (set `AGENT_ID` to `"A"` and `"B"` respectively) — these send heartbeats only.
+* **Relay Routing:** Wire the 18650 cells through the 4-channel relay module. GPIO 17 (A↔B), GPIO 27 (A↔C), GPIO 22 (B↔C). Relay must switch the positive side only (high-side switching) to preserve the common ground. Test each relay with a raw `GPIO.output` script before any HTTP integration.
+* **Ultrasonic:** Wire HC-SR04 (TRIG=GPIO 23, ECHO=GPIO 24) to the Pi.
 * **Charging Rig:** Mount TP4056 modules per cell so cells can be topped up between episodes without swapping.
 * **Bridge Server:** Spin up the FastAPI server (`bridge/server.py`) on the Pi and test it using raw `curl` commands from a laptop.
 
@@ -152,7 +152,7 @@ Phase 3 is the core training pipeline. This all happens in Colab or Hugging Face
 * **Prereqs:** Bridge server running on Pi. Calibration completed (Phase 4 step 1). `HARDWARE_BRIDGE_URL` set on the env server.
 * Load GRPO checkpoint.
 * Run 200 episodes against the live bridge. This exposes the agents to real battery voltage drops, WiFi jitter, and physical relay timing.
-* Capture INA219 readings into `training/synthetic_traces/hitl_curves.json`.
+* Capture Uno ADC readings into `training/synthetic_traces/hitl_curves.json`.
 * Fine-tune for 1 epoch on the HITL replay buffer.
 
 ---
@@ -163,7 +163,7 @@ This is where your simulated training meets Gautam's physical rig. Hardware and 
 
 ### Your Tasks (Phase 4 — Software)
 
-* **Pull Calibration Data:** Once Gautam fires the test relays, pull `delta_v` readings from the INA219 endpoint. Compute `volts_per_energy_unit = mean(delta_v) / 0.1`.
+* **Pull Calibration Data:** Once Gautam fires the test relays, pull `delta_v` readings from the Uno ADC (`GET /voltage/{agent_id}`). Compute `volts_per_energy_unit = mean(delta_v) / 0.1`.
 * **Update Calibration File:** Write the new `volts_per_energy_unit` to `bridge/calibration.json`. Update the relay duration formula in `bridge/hardware.py` line 91 from the placeholder `duration = amount * 2.5` to `duration = amount / volts_per_energy_unit * 0.08`.
 * **End-to-End Validation:** Set `HARDWARE_BRIDGE_URL` to the Pi's IP and run the first episode of the HITL-trained policy. Confirm relay clicks match accepted JSON trades and voltage drops match expected amounts within tolerance.
 * **Ablation Plot:** Pull the two GRPO training curves (with-trust vs zeroed-trust) and generate `eval/plots/trust_model_ablation.png`. Label axes clearly. The expected story: with-trust adapts faster to peer reneges.
@@ -171,16 +171,16 @@ This is where your simulated training meets Gautam's physical rig. Hardware and 
 
 ### Gautam's Tasks (Phase 4 — Hardware)
 
-* **Manual Calibration Fires:** Trigger 10 relay test fires at `amount=0.1` (using a base 250ms duration). Log the timestamp of each fire so the software side can correlate INA219 deltas.
+* **Manual Calibration Fires:** Trigger 10 relay test fires at `amount=0.1` (using a base 250ms duration). Log the timestamp of each fire so the software side can correlate Uno ADC deltas.
 * **Cell Reset:** Recharge cells to a known baseline voltage between calibration runs using the TP4056 modules.
-* **Live Episode Support:** During the E2E validation run, watch the rig and confirm the LEDs respond and relays click on schedule. Flag any stuck-closed relays immediately (INA219 will detect this; abort the episode).
+* **Live Episode Support:** During the E2E validation run, watch the rig and confirm the LEDs dim/brighten with energy transfers and relays click on schedule. Flag any stuck-closed relays immediately (Uno ADC will detect this via missing voltage drop; abort the episode).
 * **Ultrasonic Smoke Test:** Wave a hand at the HC-SR04. Confirm the bridge `/sensor/ultrasonic` endpoint returns a low distance reading that maps to an urgency spike for Agent C.
 
 ### The Handshake (Phase 4 — Integration)
 
 1. Gautam confirms 10 calibration fires complete and posts the timestamps.
 2. You pull the corresponding `delta_v` readings, compute the calibration constant, and commit the updated `bridge/calibration.json`.
-3. You run the HITL-trained policy end-to-end. Pass condition: when Agent A accepts Agent B's offer in the JSON output, Gautam's relay must physically click and the INA219 must register the expected voltage drop.
+3. You run the HITL-trained policy end-to-end. Pass condition: when Agent A accepts Agent B's offer in the JSON output, Gautam's relay must physically click, the Uno ADC must register the expected voltage drop, and Agent A's LED must visibly dim.
 4. Both of you watch the ablation plot get committed to confirm the trust model is pulling its weight. If the gap is flat, that goes in the README as a negative result; do not hide it.
 
 ---
@@ -211,7 +211,7 @@ This satisfies a core OpenEnv submission requirement.
 
 Treat the README as the grading rubric. Map it directly to the judges' scorecard:
 
-* **Environment Innovation (40%):** Explicitly state that the reward function reads from a voltmeter. Name the hybrid architecture: "LLM for language, tabular Q-learning for trust, INA219 voltage as ground truth."
+* **Environment Innovation (40%):** Explicitly state that the reward function reads from a voltmeter. Name the hybrid architecture: "LLM for language, tabular Q-learning for trust, Arduino Uno ADC voltage as ground truth."
 * **Storytelling (30%):** Write a tight 3-step narrative — Setup, the "hand wave" demo, and the resulting trust curves.
 * **Reward Improvement (20%):** Embed both PNG plots directly in the markdown.
 * **Pipeline (10%):** Document that all 5 rubrics are wired with weights, that `verify_sim` runs on every settled energy trade, and that `trust_model.end_episode()` runs on every reset.

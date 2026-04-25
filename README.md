@@ -12,7 +12,7 @@
 
 Current multi-agent LLM benchmarks run entirely in simulation. Agents can make promises they never keep with zero physical consequence. Trust is trivially gameable: an agent can claim it transferred energy without any transfer happening.
 
-**AgentGrid makes lying have a voltage.** Three Llama-3.2-1B agents negotiate energy and compute resources in natural language. When Agent A promises to send 0.15 energy units to Agent C, a physical relay fires on a Raspberry Pi, and an INA219 voltage sensor reads the actual delta on the 18650 cell. If the voltage didn't drop, the promise is marked broken — regardless of what any agent claimed.
+**AgentGrid makes lying have a voltage.** Three Llama-3.2-1B agents negotiate energy and compute resources in natural language. When Agent A promises to send 0.15 energy units to Agent C, a physical relay fires on a Raspberry Pi, and an Arduino Uno reads the actual voltage delta on the 18650 cell via its 10-bit ADC (~5mV resolution). If the voltage didn't drop, the promise is marked broken — regardless of what any agent claimed. Each agent's status LED brightness tracks its live cell voltage in real time — judges see energy flow physically.
 
 ---
 
@@ -53,7 +53,7 @@ LEDGER (last 3 settled trades):
 |---|---|---|
 | `broadcast` | Send a free-text message to all peers | None |
 | `make_offer` | Create a pending trade | None until accepted |
-| `accept_offer` | Lock the trade | Relay fires; INA219 reads delta_v |
+| `accept_offer` | Lock the trade | Relay fires; Uno ADC reads delta_v |
 | `execute_task` | Burn energy to complete task | Voltage drop |
 | `renege` | Break a promised delivery | Reputation penalty, trust update |
 | `idle` | Skip turn | Baseline drain |
@@ -64,7 +64,7 @@ LEDGER (last 3 settled trades):
 |---|---|---|
 | Survival | +0 alive, −10 dead | 1.0 |
 | Task | urgency×5 on completion, −urgency×0.3/step pending | 1.0 |
-| Promise | +1 verified_kept (INA219), −3 reneged | 0.8 |
+| Promise | +1 verified_kept (Uno ADC), −3 reneged | 0.8 |
 | JSON validity | −0.5 per parse failure | 0.2 |
 | Communication | +0.1 if broadcast led to settled trade within 3 steps | 0.3 |
 

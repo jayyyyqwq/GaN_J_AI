@@ -1,7 +1,7 @@
 """
 Raspberry Pi bridge server.
 
-Runs on the Pi. Exposes hardware (INA219, relay matrix, HC-SR04) over HTTP
+Runs on the Pi. Exposes hardware (Uno ADC, relay matrix, HC-SR04) over HTTP
 so the env running on Colab/HF Spaces can close the hardware loop.
 
 Start: uvicorn bridge.server:app --host 0.0.0.0 --port 7000
@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 try:
-    from .hardware import HardwareDriver
+    from .hardware import HardwareDriver  # type: ignore[import]
 except ImportError:
     from hardware import HardwareDriver  # type: ignore[no-redef]
 
@@ -50,7 +50,7 @@ async def reset_hardware() -> dict:
 
 @app.get("/voltage/{agent_id}")
 async def get_voltage(agent_id: str) -> VoltageReading:
-    """Read INA219 voltage for one agent's cell."""
+    """Read Uno ADC voltage for one agent's cell."""
     if agent_id not in ("A", "B", "C"):
         raise HTTPException(status_code=400, detail=f"Unknown agent: {agent_id}")
     v, delta = hw.read_voltage(agent_id)
@@ -61,7 +61,7 @@ async def get_voltage(agent_id: str) -> VoltageReading:
 async def fire_relay(req: RelayFireRequest) -> dict:
     """
     Route power from one cell to another via relay matrix.
-    Returns actual delta_v measured by INA219 on sender's cell.
+    Returns actual delta_v measured by Uno ADC on sender's cell.
     """
     if req.from_agent not in ("A", "B", "C") or req.to_agent not in ("A", "B", "C"):
         raise HTTPException(status_code=400, detail="Invalid agent IDs.")

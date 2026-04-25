@@ -2,7 +2,7 @@
 Hash-chained commitment ledger backed by SQLite.
 
 Not a blockchain — a single append-only log with SHA-256 chain links.
-Physical INA219 readings are the oracle that decides verified_kept vs verified_broken.
+Physical voltage readings (Uno ADC, served by bridge) are the oracle that decides verified_kept vs verified_broken.
 """
 from __future__ import annotations
 
@@ -31,12 +31,12 @@ CREATE TABLE IF NOT EXISTS entries (
 )
 """
 
-# Calibrated from INA219 logs: how many volts drop per energy unit transferred
+# Calibrated from Uno ADC logs: how many volts drop per energy unit transferred
 VOLTS_PER_ENERGY_UNIT: float = 0.08
-# Tolerance = 40% of expected drop, minimum 1 INA219 LSB (4 mV).
+# Tolerance = 40% of expected drop, minimum 2 Uno ADC LSB (8 mV at 5mV/LSB).
 # Proportional tolerance handles small give_amounts correctly.
 _TOLERANCE_FRACTION: float = 0.40
-_MIN_TOLERANCE: float = 0.004  # 1 LSB
+_MIN_TOLERANCE: float = 0.008  # 2 LSB at 5mV/LSB (Uno 10-bit ADC)
 
 
 @dataclass
@@ -93,7 +93,7 @@ class CommitmentLedger:
         return cur.lastrowid or 0
 
     def verify_against_hardware(self, entry_id: int, delta_v: float) -> str:
-        """Compare promised voltage drop to actual INA219 reading."""
+        """Compare promised voltage drop to actual Uno ADC reading."""
         row = self._get(entry_id)
         if row is None:
             return "not_found"

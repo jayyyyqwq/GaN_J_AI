@@ -79,7 +79,7 @@ def main() -> None:
         from openenv.core.mcp_client import MCPToolClient as AgentGridClient
 
     all_returns: list[float] = []
-    with AgentGridClient(base_url=args.url) as env:
+    with AgentGridClient(base_url=args.url).sync() as env:
         for ep in range(args.episodes):
             rewards = run_episode(env)
             ep_return = sum(rewards.values()) / len(rewards)
