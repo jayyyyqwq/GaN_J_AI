@@ -40,6 +40,7 @@ VOLTS_PER_ENERGY_UNIT: float = 0.15
 # Spike events (1% prob, σ=0.05) are excluded — those represent genuine measurement failures.
 _TOLERANCE_FRACTION: float = 0.55
 _MIN_TOLERANCE: float = 0.012  # ~2.4 LSB at 5 mV/LSB (Uno 10-bit ADC)
+TOLERANCE: float = _MIN_TOLERANCE  # public alias for tests / external callers
 
 
 @dataclass

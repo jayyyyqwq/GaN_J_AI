@@ -29,8 +29,30 @@ import random
 import uuid
 from typing import Any, Optional
 
-from openenv.core.env_server.mcp_environment import MCPEnvironment
-from openenv.core.env_server.types import Action, Observation, State
+try:
+    from openenv.core.env_server.mcp_environment import MCPEnvironment
+    from openenv.core.env_server.types import Action, Observation, State
+except ImportError:
+    # Headless / Spaces mode — openenv-core not installed (websockets conflict with gradio)
+    class MCPEnvironment:  # type: ignore[no-redef]
+        def __init__(self, mcp) -> None: pass
+        def step(self, action, timeout_s=None, **kwargs): return None
+        async def step_async(self, action, timeout_s=None, **kwargs): return None
+
+    class Action:  # type: ignore[no-redef]
+        pass
+
+    class Observation:  # type: ignore[no-redef]
+        def __init__(self, *, done: bool, reward: float, metadata: dict) -> None:
+            self.done = done
+            self.reward = reward
+            self.metadata = metadata
+
+    class State:  # type: ignore[no-redef]
+        def __init__(self, *, episode_id: str, step_count: int) -> None:
+            self.episode_id = episode_id
+            self.step_count = step_count
+
 from fastmcp import FastMCP
 
 try:
