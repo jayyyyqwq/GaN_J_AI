@@ -1,0 +1,22 @@
+{
+  "_comment": "Calibrated from INA219 logs collected on Day 2. Update after each hardware session.",
+  "volts_per_energy_unit": 0.08,
+  "voltage_noise_sigma": 0.005,
+  "idle_drain_per_step": 0.015,
+  "relay_duration_per_unit_seconds": 2.5,
+  "charge_efficiency": 0.85,
+  "ina219_addresses": {
+    "A": "0x40",
+    "B": "0x41",
+    "C": "0x44"
+  },
+  "relay_pins_bcm": {
+    "A_to_B": 17,
+    "A_to_C": 27,
+    "B_to_C": 22
+  },
+  "ultrasonic_pins_bcm": {
+    "trig": 23,
+    "echo": 24
+  }
+}

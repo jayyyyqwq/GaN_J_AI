@@ -1,0 +1,31 @@
+[project]
+name = "agentgrid-env"
+version = "0.1.0"
+description = "3-agent LLM negotiation environment with physical hardware grounding"
+requires-python = ">=3.11"
+dependencies = [
+    "openenv-core",
+    "fastmcp",
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+bridge = [
+    "smbus2",
+    "RPi.GPIO",
+]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentgrid_env"]
