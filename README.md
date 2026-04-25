@@ -14,9 +14,19 @@ pinned: false
 
 > *The only OpenEnv submission where the reward function reads from a voltmeter — three small LLMs negotiate energy and compute in plain English, and a relay clicks every time a promise is kept.*
 
-[![HF Space](https://img.shields.io/badge/HF%20Space-agentgrid--env-yellow)](https://huggingface.co/spaces/YOUR_HF_USERNAME/agentgrid-env)
+[![HF Demo Space](https://img.shields.io/badge/HF%20Space-demo-yellow)](https://huggingface.co/spaces/Jayyyy234/agentgrid-env)
+[![HF Env Server](https://img.shields.io/badge/HF%20Space-env--server-green)](https://huggingface.co/spaces/Jayyyy234/agentgrid-env-server)
 [![YouTube Demo](https://img.shields.io/badge/YouTube-demo%20video-red)](https://youtu.be/YOUR_VIDEO_ID)
-[![HF Blog](https://img.shields.io/badge/HF%20Blog-mini--post-blue)](https://huggingface.co/blog/YOUR_HF_USERNAME/agentgrid)
+[![HF Blog](https://img.shields.io/badge/HF%20Blog-mini--post-blue)](https://huggingface.co/blog/Jayyyy234/agentgrid)
+
+---
+
+## Two-Space Architecture
+
+- **Demo Space** — [Jayyyy234/agentgrid-env](https://huggingface.co/spaces/Jayyyy234/agentgrid-env): Gradio visualization
+- **Env Server** — [Jayyyy234/agentgrid-env-server](https://huggingface.co/spaces/Jayyyy234/agentgrid-env-server): OpenEnv FastAPI endpoint
+
+**For judges:** Connect your OpenEnv client to `https://jayyyy234-agentgrid-env-server.hf.space`
 
 ---
 

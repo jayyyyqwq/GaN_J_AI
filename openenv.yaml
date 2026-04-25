@@ -4,3 +4,4 @@ type: space
 runtime: fastapi
 app: agentgrid_env.server.app:app
 port: 8000
+env_server_url: https://jayyyy234-agentgrid-env-server.hf.space
