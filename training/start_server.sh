@@ -6,10 +6,9 @@ export TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor_cache
 
 WORK_DIR="$HOME/workspace"
 
-if [ ! -d "$WORK_DIR/AgentGrid_V1" ]; then
-    echo "=== Creating workspace ==="
-    mkdir -p "$WORK_DIR"
+mkdir -p "$WORK_DIR"
 
+if [ ! -d "$WORK_DIR/AgentGrid_V1" ]; then
     echo "=== Cloning repo ==="
     git clone https://github.com/jayyyyqwq/GaN_J_AI.git "$WORK_DIR/AgentGrid_V1"
 
@@ -20,6 +19,9 @@ if [ ! -d "$WORK_DIR/AgentGrid_V1" ]; then
     echo "=== Installing deps ==="
     cd "$WORK_DIR/AgentGrid_V1" && pip install -q -e .
     pip install -q transformers peft accelerate bitsandbytes trl datasets plotly matplotlib pandas
+else
+    echo "=== Pulling latest changes ==="
+    cd "$WORK_DIR/AgentGrid_V1" && git pull --ff-only origin main || true
 fi
 
 echo "=== Starting JupyterLab at $WORK_DIR ==="
