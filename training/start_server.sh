@@ -15,6 +15,8 @@ if [ ! -d "$WORK_DIR/AgentGrid_V1" ]; then
     echo "=== Installing deps ==="
     cd "$WORK_DIR/AgentGrid_V1" && pip install -q -e .
     pip install -q unsloth trl "pyopenssl>=24.0.0"
+    pip install -q --upgrade torchvision  # match whatever torch unsloth pulled
+    pip install -q plotly matplotlib pandas
 fi
 
 echo "=== Starting JupyterLab at $WORK_DIR ==="
