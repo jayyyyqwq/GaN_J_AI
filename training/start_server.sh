@@ -13,13 +13,14 @@ if [ ! -d "$WORK_DIR/AgentGrid_V1" ]; then
     echo "=== Cloning repo ==="
     git clone https://github.com/jayyyyqwq/GaN_J_AI.git "$WORK_DIR/AgentGrid_V1"
 
-    echo "=== Installing torch (cu118) ==="
-    pip install -q "torch==2.4.1+cu118" "torchvision==0.19.1+cu118" \
+    echo "=== Installing torch (cu118, pinned) ==="
+    pip install -q "torch==2.5.1+cu118" "torchvision==0.20.1+cu118" \
         --index-url https://download.pytorch.org/whl/cu118
 
     echo "=== Installing deps ==="
     cd "$WORK_DIR/AgentGrid_V1" && pip install -q -e .
-    pip install -q unsloth trl plotly matplotlib pandas
+    # Pin unsloth to last version compatible with torch 2.5.x
+    pip install -q "unsloth==2024.12.4" trl plotly matplotlib pandas
 fi
 
 echo "=== Starting JupyterLab at $WORK_DIR ==="
