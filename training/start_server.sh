@@ -4,7 +4,6 @@ export PATH="/tmp/.local/bin:$PATH"
 
 WORK_DIR="$HOME/workspace"
 
-# Auto-setup on every boot (skips if already done)
 if [ ! -d "$WORK_DIR/AgentGrid_V1" ]; then
     echo "=== Creating workspace ==="
     mkdir -p "$WORK_DIR"
@@ -14,9 +13,13 @@ if [ ! -d "$WORK_DIR/AgentGrid_V1" ]; then
 
     echo "=== Installing deps ==="
     cd "$WORK_DIR/AgentGrid_V1" && pip install -q -e .
-    pip install -q unsloth trl "pyopenssl>=24.0.0"
-    pip install -q --upgrade torchvision  # match whatever torch unsloth pulled
-    pip install -q plotly matplotlib pandas
+    pip install -q unsloth trl "pyopenssl>=24.0.0" plotly matplotlib pandas
+
+    # Force torch to cu118 after unsloth (driver 525 supports CUDA 12.0 max, cu118 needs >= 520)
+    pip install -q --force-reinstall \
+        "torch==2.4.1+cu118" \
+        "torchvision==0.19.1+cu118" \
+        --index-url https://download.pytorch.org/whl/cu118
 fi
 
 echo "=== Starting JupyterLab at $WORK_DIR ==="
