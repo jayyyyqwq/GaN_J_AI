@@ -1,6 +1,8 @@
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor_cache
+ENV USER=user
 
 RUN apt-get update && apt-get install -y \
     python3 python3-pip git curl build-essential \
