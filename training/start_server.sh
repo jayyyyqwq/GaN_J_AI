@@ -14,7 +14,7 @@ if [ ! -d "$WORK_DIR/AgentGrid_V1" ]; then
 
     echo "=== Installing deps ==="
     cd "$WORK_DIR/AgentGrid_V1" && pip install -q -e .
-    pip install -q unsloth trl
+    pip install -q unsloth trl "pyopenssl>=24.0.0"
 fi
 
 echo "=== Starting JupyterLab at $WORK_DIR ==="
