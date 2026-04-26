@@ -2,24 +2,28 @@
 export HOME=/tmp
 export PATH="/tmp/.local/bin:$PATH"
 
+WORK_DIR="$HOME/workspace"
+
 # Auto-setup on every boot (skips if already done)
-if [ ! -d /workspace/AgentGrid_V1 ]; then
+if [ ! -d "$WORK_DIR/AgentGrid_V1" ]; then
+    echo "=== Creating workspace ==="
+    mkdir -p "$WORK_DIR"
+
     echo "=== Cloning repo ==="
-    mkdir -p /workspace
-    git clone https://github.com/jayyyyqwq/GaN_J_AI.git /workspace/AgentGrid_V1
+    git clone https://github.com/jayyyyqwq/GaN_J_AI.git "$WORK_DIR/AgentGrid_V1"
 
     echo "=== Installing deps ==="
-    cd /workspace/AgentGrid_V1 && pip install -q -e .
+    cd "$WORK_DIR/AgentGrid_V1" && pip install -q -e .
     pip install -q unsloth trl
 fi
 
-echo "=== Starting JupyterLab at /workspace ==="
+echo "=== Starting JupyterLab at $WORK_DIR ==="
 jupyter lab \
   --ip=0.0.0.0 \
   --port=7860 \
   --no-browser \
   --allow-root \
-  --notebook-dir=/workspace \
+  --notebook-dir="$WORK_DIR" \
   --IdentityProvider.token='' \
   --ServerApp.password='' \
   --ServerApp.disable_check_xsrf=True \
