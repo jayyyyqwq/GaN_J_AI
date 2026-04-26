@@ -13,14 +13,15 @@ if [ ! -d "$WORK_DIR/AgentGrid_V1" ]; then
     echo "=== Cloning repo ==="
     git clone https://github.com/jayyyyqwq/GaN_J_AI.git "$WORK_DIR/AgentGrid_V1"
 
-    echo "=== Installing torch (cu118, pinned) ==="
+    echo "=== Installing torch (cu118, pinned before unsloth) ==="
     pip install -q "torch==2.5.1+cu118" "torchvision==0.20.1+cu118" \
         --index-url https://download.pytorch.org/whl/cu118
 
     echo "=== Installing deps ==="
     cd "$WORK_DIR/AgentGrid_V1" && pip install -q -e .
-    # Pin unsloth to last version compatible with torch 2.5.x
-    pip install -q "unsloth==2024.12.4" trl plotly matplotlib pandas
+    # unsloth 2026.x pulls torch 2.11 (CUDA 13) — incompatible with HF A100 driver 525 (CUDA 12.0)
+    # 2024.11.5 is last version that works with torch 2.5.x + cu118
+    pip install -q "unsloth==2024.11.5" trl plotly matplotlib pandas
 fi
 
 echo "=== Starting JupyterLab at $WORK_DIR ==="
