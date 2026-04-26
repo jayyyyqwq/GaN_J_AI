@@ -1,9 +1,12 @@
-FROM python:3.10-slim
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
-RUN apt-get update && apt-get install -y git curl build-essential \
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    python3 python3-pip git curl build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir jupyterlab notebook ipywidgets
+RUN pip3 install --no-cache-dir jupyterlab notebook ipywidgets
 
 WORKDIR /tmp
 COPY start_server.sh /start_server.sh
