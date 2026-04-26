@@ -6,7 +6,8 @@ ENV USER=user
 
 RUN apt-get update && apt-get install -y \
     python3 python3-pip git curl build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && echo "user:x:1000:1000:user:/tmp:/bin/bash" >> /etc/passwd
 
 RUN pip3 install --no-cache-dir jupyterlab notebook ipywidgets
 

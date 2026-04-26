@@ -1,6 +1,8 @@
 #!/bin/bash
 export HOME=/tmp
 export PATH="/tmp/.local/bin:$PATH"
+export USER=user
+export TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor_cache
 
 WORK_DIR="$HOME/workspace"
 
